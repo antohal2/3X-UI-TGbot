@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  bot:
+    build: .
+    container_name: 3xui-bot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data  # Для SQLite
+    depends_on:
+      - redis  # Опционально, для FSM storage
+    networks:
+      - bot-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: 3xui-bot-redis
+    restart: unless-stopped
+    networks:
+      - bot-net
+
+networks:
+  bot-net:
+    driver: bridge
