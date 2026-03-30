@@ -2,9 +2,8 @@
 
 from aiogram import Router, F
 from aiogram.types import Message
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.crud import get_user, create_user
+from database.crud import create_user, get_user, update_user
 from database.engine import get_db
 from keyboards.user_kb import get_main_menu_kb
 from keyboards.admin_kb import get_admin_menu_kb
@@ -22,13 +21,20 @@ async def start_command(message: Message):
         username = message.from_user.username
         full_name = message.from_user.full_name
 
+        is_admin = user_id in settings.admin_ids_list
+
         # Регистрация пользователя, если не существует
         user = await get_user(session, user_id)
         if not user:
-            user = await create_user(session, user_id, username, full_name)
-
-        # Определить роль
-        is_admin = user_id in settings.admin_ids_list
+            user = await create_user(session, user_id, username, full_name, is_admin=is_admin)
+        else:
+            await update_user(
+                session,
+                user_id,
+                username=username,
+                full_name=full_name,
+                is_admin=is_admin,
+            )
 
         if is_admin:
             # Админ меню

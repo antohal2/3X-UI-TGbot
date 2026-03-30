@@ -1,11 +1,14 @@
 """Планировщик задач."""
 
+import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
-from sqlalchemy.ext.asyncio import AsyncSession
 from database.engine import async_session
 from services.subscription import SubscriptionService
-from database.crud import get_expiring_subscriptions, get_all_users
+from database.crud import get_expiring_subscriptions
+from utils.texts import SUBSCRIPTION_EXPIRING_SOON
+
+logger = logging.getLogger(__name__)
 
 
 async def check_expired_subscriptions():
@@ -21,11 +24,13 @@ async def notify_expiring_soon(bot: Bot):
         expiring_subs = await get_expiring_subscriptions(session, days=3)
 
         for sub in expiring_subs:
-            await bot.send_message(
-                sub.user.telegram_id,
-                f"📢 Ваша подписка истекает через 3 дня!\n"
-                f"Продлите её в меню бота, чтобы не потерять доступ.",
-            )
+            if not sub.user:
+                continue
+
+            try:
+                await bot.send_message(sub.user.telegram_id, SUBSCRIPTION_EXPIRING_SOON)
+            except Exception as exc:
+                logger.warning("Не удалось отправить уведомление пользователю %s: %s", sub.user.telegram_id, exc)
 
 
 def setup_scheduler(bot: Bot):

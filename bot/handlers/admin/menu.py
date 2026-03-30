@@ -15,3 +15,11 @@ async def back_to_user_menu(callback: CallbackQuery):
     kb = get_main_menu_kb()
     await callback.message.edit_text("Выберите действие:", reply_markup=kb)
     await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_admin")
+async def back_to_admin_menu(callback: CallbackQuery):
+    """Вернуться в админ-меню."""
+    kb = get_admin_menu_kb()
+    await callback.message.edit_text("Админ-панель:", reply_markup=kb)
+    await callback.answer()

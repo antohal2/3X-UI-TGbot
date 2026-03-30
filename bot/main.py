@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 
@@ -24,12 +25,18 @@ from handlers.admin.clients import router as clients_router
 from handlers.admin.stats import router as stats_router
 from handlers.admin.broadcast import router as broadcast_router
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+LOGS_DIR = BASE_DIR / "logs"
+DATA_DIR = BASE_DIR / "data"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("logs/bot.log"),
+        logging.FileHandler(LOGS_DIR / "bot.log", encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -78,20 +85,16 @@ async def main():
     dp.include_router(clients_router)
     dp.include_router(stats_router)
     dp.include_router(broadcast_router)
-    admin_router.message.middleware(AuthMiddleware(admin_only=True))
-    admin_router.callback_query.middleware(AuthMiddleware(admin_only=True))
-
-    dp.include_router(admin_router)
-    dp.include_router(server.router)
-    dp.include_router(clients.router)
-    dp.include_router(stats.router)
-    dp.include_router(broadcast.router)
 
     # Настройка планировщика
-    setup_scheduler(bot)
+    scheduler = setup_scheduler(bot)
 
     logger.info("Бот запущен.")
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        scheduler.shutdown(wait=False)
+        await bot.session.close()
 
 
 if __name__ == "__main__":

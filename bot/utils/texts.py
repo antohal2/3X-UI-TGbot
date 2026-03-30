@@ -27,6 +27,17 @@ PAYMENT_SUCCESS = (
     "(Hiddify, v2rayNG, Streisand и т.д.)"
 )
 
+RENEWAL_SUCCESS = (
+    "✅ Подписка успешно продлена!\n\n"
+    "📅 Новый срок действия: {expires_at}\n"
+    "🔗 Ссылка подписки:\n`{url}`"
+)
+
+SUBSCRIPTION_LINK_MESSAGE = (
+    "🔗 Ваша ссылка подписки:\n`{url}`\n\n"
+    "Добавьте её в VPN-клиент или обновите существующую конфигурацию."
+)
+
 SUBSCRIPTION_EXPIRED = (
     "⚠️ Ваша подписка истекла!\n\n"
     "Для продления перейдите в меню бота."
@@ -74,3 +85,5 @@ ERROR_3XUI_UNAVAILABLE = "❌ Сервис 3X-UI временно недосту
 UNKNOWN_PLAN = "❌ Неизвестный тарифный план."
 
 CLIENT_NOT_FOUND = "❌ Клиент не найден."
+
+ACCESS_DENIED = "❌ У вас нет доступа к этой операции."

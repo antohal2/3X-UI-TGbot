@@ -2,10 +2,9 @@
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.engine import get_db
-from database.crud import get_all_users, get_all_payments
+from database.crud import count_active_subscriptions, get_all_payments, get_all_users
 from utils.texts import STATS_MESSAGE
 
 router = Router()
@@ -17,11 +16,9 @@ async def show_stats(callback: CallbackQuery):
     async for session in get_db():
         users = await get_all_users(session)
         payments = await get_all_payments(session)
+        active_subs = await count_active_subscriptions(session)
 
-        # Подсчет активных подписок (заглушка)
-        active_subs = sum(1 for u in users if any(s.status == "active" for s in u.subscriptions))
-
-        revenue = sum(p.amount_stars for p in payments)
+        revenue = sum(p.amount_stars for p in payments if p.status == "completed")
 
         text = STATS_MESSAGE.format(
             users=len(users),

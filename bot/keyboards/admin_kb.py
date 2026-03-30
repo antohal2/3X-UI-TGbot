@@ -1,6 +1,6 @@
 """Клавиатуры администратора."""
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
@@ -27,4 +27,22 @@ def get_client_management_kb(client_email: str) -> InlineKeyboardMarkup:
     builder.button(text="🗑️ Удалить", callback_data=f"client:delete:{client_email}")
     builder.button(text="⬅️ Назад", callback_data="admin:clients_list")
     builder.adjust(2)
+    return builder.as_markup()
+
+
+def get_clients_list_kb(clients: list[tuple[int, str]]) -> InlineKeyboardMarkup:
+    """Список клиентов для выбора в админ-панели."""
+    builder = InlineKeyboardBuilder()
+    for subscription_id, client_email in clients:
+        builder.button(text=f"👤 {client_email}", callback_data=f"admin:client:{subscription_id}")
+
+    builder.button(text="⬅️ Назад", callback_data="back_to_admin")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_admin_back_kb() -> InlineKeyboardMarkup:
+    """Кнопка возврата в админ-меню."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬅️ В админ-панель", callback_data="back_to_admin")
     return builder.as_markup()

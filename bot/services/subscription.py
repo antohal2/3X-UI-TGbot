@@ -5,7 +5,14 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from config import settings
-from database.crud import get_user, create_user, update_user, create_subscription, get_subscription_by_email
+from database.crud import (
+    create_subscription,
+    create_user,
+    get_subscription_by_id,
+    get_user,
+    update_subscription,
+    update_user,
+)
 from .xui_service import XUIService
 
 
@@ -15,12 +22,22 @@ class SubscriptionService:
     def __init__(self):
         self.xui = XUIService()
 
+    @staticmethod
+    def build_subscription_url(sub_id: str) -> str:
+        """Собрать ссылку на подписку по short id."""
+        base_url = settings.subscription_base_url.rstrip("/")
+        return f"{base_url}/{sub_id}"
+
     async def create_trial_subscription(self, session: AsyncSession, telegram_id: int) -> Optional[dict]:
         """Создать пробную подписку."""
         # Проверить пользователя
         user = await get_user(session, telegram_id)
         if not user:
-            user = await create_user(session, telegram_id)
+            user = await create_user(
+                session,
+                telegram_id,
+                is_admin=telegram_id in settings.admin_ids_list,
+            )
 
         if user.trial_used:
             return None  # Уже использована
@@ -54,7 +71,7 @@ class SubscriptionService:
 
         return {
             "subscription": subscription,
-            "sub_url": f"{settings.subscription_base_url}{client_data['sub_id']}"
+            "sub_url": self.build_subscription_url(client_data["sub_id"])
         }
 
     async def create_monthly_subscription(self, session: AsyncSession, telegram_id: int) -> dict:
@@ -62,7 +79,11 @@ class SubscriptionService:
         # Проверить пользователя
         user = await get_user(session, telegram_id)
         if not user:
-            user = await create_user(session, telegram_id)
+            user = await create_user(
+                session,
+                telegram_id,
+                is_admin=telegram_id in settings.admin_ids_list,
+            )
 
         # Создать клиента в 3X-UI
         client_email = f"user_{telegram_id}_{int(datetime.utcnow().timestamp())}"
@@ -90,25 +111,49 @@ class SubscriptionService:
 
         return {
             "subscription": subscription,
-            "sub_url": f"{settings.subscription_base_url}{client_data['sub_id']}"
+            "sub_url": self.build_subscription_url(client_data["sub_id"])
         }
 
-    async def renew_subscription(self, session: AsyncSession, subscription_id: int, extra_days: int = 30) -> bool:
+    async def renew_subscription(
+        self,
+        session: AsyncSession,
+        subscription_id: int,
+        extra_days: int = 30,
+    ):
         """Продлить подписку."""
-        # Получить подписку
-        # Предполагаем, что subscription_id известен, но в коде нужно получить по ID
-        # Для простоты, используем get_subscription_by_email, но нужно адаптировать
-        # В реальности, нужно добавить функцию get_subscription_by_id
-        # Пока пропустим детали, сосредоточимся на структуре
-        # ...
+        subscription = await get_subscription_by_id(session, subscription_id)
+        if not subscription:
+            return None
 
-        # Обновить в 3X-UI
-        # await self.xui.renew_client(client_email, extra_days)
+        new_expire_ms = await self.xui.renew_client(subscription.client_email, extra_days)
+        if new_expire_ms is None:
+            return None
 
-        # Обновить в БД
-        # ...
+        expires_at = datetime.utcfromtimestamp(new_expire_ms / 1000)
+        await update_subscription(
+            session,
+            subscription.id,
+            expires_at=expires_at,
+            status="active",
+        )
+        return await get_subscription_by_id(session, subscription.id)
 
-        return True
+    async def get_subscription_link(
+        self,
+        session: AsyncSession,
+        subscription_id: int,
+        telegram_id: int,
+    ) -> Optional[str]:
+        """Получить ссылку подписки, если она принадлежит пользователю."""
+        user = await get_user(session, telegram_id)
+        if not user:
+            return None
+
+        subscription = await get_subscription_by_id(session, subscription_id)
+        if not subscription or subscription.user_id != user.id or not subscription.sub_id:
+            return None
+
+        return self.build_subscription_url(subscription.sub_id)
 
     async def disable_expired_subscriptions(self, session: AsyncSession):
         """Отключить истёкшие подписки."""

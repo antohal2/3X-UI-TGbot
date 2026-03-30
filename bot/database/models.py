@@ -24,8 +24,8 @@ class User(Base):
     trial_used = Column(Boolean, default=False)  # Использована ли пробная подписка
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    subscriptions = relationship("Subscription", back_populates="user")
-    payments = relationship("Payment", back_populates="user")
+    subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
+    payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
 
 
 class Subscription(Base):
@@ -47,6 +47,7 @@ class Subscription(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="subscriptions")
+    payments = relationship("Payment", back_populates="subscription")
 
 
 class Payment(Base):
@@ -60,7 +61,8 @@ class Payment(Base):
     telegram_payment_id = Column(String, unique=True, nullable=False)
     amount_stars = Column(Integer, nullable=False)
     plan_type = Column(String, nullable=False)
-    status = Column(String, default="completed")  # "completed", "refunded"
+    status = Column(String, default="completed")  # "processing", "completed", "failed", "refunded"
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="payments")
+    subscription = relationship("Subscription", back_populates="payments")

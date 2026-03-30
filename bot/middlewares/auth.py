@@ -22,7 +22,10 @@ class AuthMiddleware(BaseMiddleware):
 
         if self.admin_only:
             if user_id not in settings.admin_ids_list:
-                # Игнорировать сообщение от не-админа
+                if isinstance(event, CallbackQuery):
+                    await event.answer("Недостаточно прав для этого действия.", show_alert=True)
+                else:
+                    await event.answer("Эта команда доступна только администраторам.")
                 return
 
         # Для обычных хендлеров проверка не требуется

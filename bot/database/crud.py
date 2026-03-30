@@ -1,9 +1,9 @@
 """CRUD-операции для базы данных."""
 
+from typing import Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
-from typing import List, Optional
 from datetime import datetime, timedelta
 
 from .models import User, Subscription, Payment
@@ -18,12 +18,19 @@ async def get_user(session: AsyncSession, telegram_id: int) -> Optional[User]:
     return result.scalar_one_or_none()
 
 
-async def create_user(session: AsyncSession, telegram_id: int, username: str = None, full_name: str = None) -> User:
+async def create_user(
+    session: AsyncSession,
+    telegram_id: int,
+    username: str = None,
+    full_name: str = None,
+    is_admin: bool = False,
+) -> User:
     """Создать нового пользователя."""
     user = User(
         telegram_id=telegram_id,
         username=username,
         full_name=full_name,
+        is_admin=is_admin,
     )
     session.add(user)
     await session.commit()
@@ -42,7 +49,11 @@ async def update_user(session: AsyncSession, telegram_id: int, **kwargs) -> bool
 
 async def get_all_users(session: AsyncSession) -> List[User]:
     """Получить всех пользователей."""
-    result = await session.execute(select(User))
+    result = await session.execute(
+        select(User)
+        .options(selectinload(User.subscriptions))
+        .order_by(User.created_at.desc())
+    )
     return result.scalars().all()
 
 
@@ -50,7 +61,9 @@ async def get_all_users(session: AsyncSession) -> List[User]:
 async def get_user_subscriptions(session: AsyncSession, user_id: int) -> List[Subscription]:
     """Получить все подписки пользователя."""
     result = await session.execute(
-        select(Subscription).where(Subscription.user_id == user_id)
+        select(Subscription)
+        .where(Subscription.user_id == user_id)
+        .order_by(Subscription.created_at.desc())
     )
     return result.scalars().all()
 
@@ -92,19 +105,62 @@ async def update_subscription(session: AsyncSession, subscription_id: int, **kwa
     return result.rowcount > 0
 
 
-async def get_subscription_by_id(session: AsyncSession, subscription_id: int) -> Optional[Subscription]:
+async def get_subscription_by_id(
+    session: AsyncSession,
+    subscription_id: int,
+    load_user: bool = False,
+) -> Optional[Subscription]:
     """Получить подписку по ID."""
-    result = await session.execute(
-        select(Subscription).where(Subscription.id == subscription_id)
-    )
+    query = select(Subscription).where(Subscription.id == subscription_id)
+    if load_user:
+        query = query.options(selectinload(Subscription.user))
+
+    result = await session.execute(query)
     return result.scalar_one_or_none()
+
+
+async def get_subscription_by_email(
+    session: AsyncSession,
+    client_email: str,
+    load_user: bool = False,
+) -> Optional[Subscription]:
+    """Получить подписку по email клиента 3X-UI."""
+    query = select(Subscription).where(Subscription.client_email == client_email)
+    if load_user:
+        query = query.options(selectinload(Subscription.user))
+
+    result = await session.execute(query)
+    return result.scalar_one_or_none()
+
+
+async def get_recent_subscriptions(session: AsyncSession, limit: int = 10) -> List[Subscription]:
+    """Получить последние подписки для админ-панели."""
+    result = await session.execute(
+        select(Subscription)
+        .options(selectinload(Subscription.user))
+        .order_by(Subscription.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def count_active_subscriptions(session: AsyncSession) -> int:
+    """Подсчитать количество активных подписок."""
+    result = await session.scalar(
+        select(func.count())
+        .select_from(Subscription)
+        .where(Subscription.status == "active")
+    )
+    return int(result or 0)
 
 
 async def get_expired_active_subscriptions(session: AsyncSession) -> List[Subscription]:
     """Получить активные подписки, которые истекли."""
     now = datetime.utcnow()
     result = await session.execute(
-        select(Subscription).where(
+        select(Subscription)
+        .options(selectinload(Subscription.user))
+        .where(
             Subscription.status == "active",
             Subscription.expires_at < now
         )
@@ -117,7 +173,9 @@ async def get_expiring_subscriptions(session: AsyncSession, days: int = 3) -> Li
     now = datetime.utcnow()
     future = now + timedelta(days=days)
     result = await session.execute(
-        select(Subscription).where(
+        select(Subscription)
+        .options(selectinload(Subscription.user))
+        .where(
             Subscription.status == "active",
             Subscription.expires_at.between(now, future)
         )
@@ -133,6 +191,7 @@ async def create_payment(
     telegram_payment_id: str,
     amount_stars: int,
     plan_type: str,
+    status: str = "completed",
 ) -> Payment:
     """Создать новый платеж."""
     payment = Payment(
@@ -141,11 +200,35 @@ async def create_payment(
         telegram_payment_id=telegram_payment_id,
         amount_stars=amount_stars,
         plan_type=plan_type,
+        status=status,
     )
     session.add(payment)
     await session.commit()
     await session.refresh(payment)
     return payment
+
+
+async def update_payment(session: AsyncSession, payment_id: int, **kwargs: Any) -> bool:
+    """Обновить платеж."""
+    result = await session.execute(
+        update(Payment).where(Payment.id == payment_id).values(**kwargs)
+    )
+    await session.commit()
+    return result.rowcount > 0
+
+
+async def get_payment_by_telegram_payment_id(
+    session: AsyncSession,
+    telegram_payment_id: str,
+    load_subscription: bool = False,
+) -> Optional[Payment]:
+    """Получить платеж по Telegram payment charge id."""
+    query = select(Payment).where(Payment.telegram_payment_id == telegram_payment_id)
+    if load_subscription:
+        query = query.options(selectinload(Payment.subscription))
+
+    result = await session.execute(query)
+    return result.scalar_one_or_none()
 
 
 async def get_user_payments(session: AsyncSession, user_id: int) -> List[Payment]:
@@ -158,5 +241,7 @@ async def get_user_payments(session: AsyncSession, user_id: int) -> List[Payment
 
 async def get_all_payments(session: AsyncSession) -> List[Payment]:
     """Получить все платежи."""
-    result = await session.execute(select(Payment))
+    result = await session.execute(
+        select(Payment).order_by(Payment.created_at.desc())
+    )
     return result.scalars().all()

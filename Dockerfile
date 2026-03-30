@@ -1,5 +1,9 @@
 FROM python:3.11-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
 WORKDIR /app
 
 COPY requirements.txt .
@@ -9,4 +13,4 @@ COPY . .
 
 RUN mkdir -p data logs
 
-CMD ["python", "bot/main.py"]
+CMD ["python3", "bot/main.py"]

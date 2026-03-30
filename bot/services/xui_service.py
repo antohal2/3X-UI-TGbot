@@ -15,7 +15,7 @@ class XUIService:
             settings.xui_host,
             settings.xui_username,
             settings.xui_password,
-            use_tls_verify=False
+            use_tls_verify=settings.xui_tls_verify
         )
         self._logged_in = False
 

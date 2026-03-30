@@ -1,22 +1,14 @@
-version: "3.8"
-
 services:
   bot:
     build: .
+    image: 3xui-tgbot:latest
     container_name: 3xui-bot
     restart: unless-stopped
     env_file: .env
     volumes:
-      - ./data:/app/data  # Для SQLite
-    depends_on:
-      - redis  # Опционально, для FSM storage
-    networks:
-      - bot-net
-
-  redis:
-    image: redis:7-alpine
-    container_name: 3xui-bot-redis
-    restart: unless-stopped
+      - ./data:/app/data
+      - ./logs:/app/logs
+    stop_grace_period: 20s
     networks:
       - bot-net
 

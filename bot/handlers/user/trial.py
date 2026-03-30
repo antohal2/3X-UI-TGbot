@@ -2,7 +2,6 @@
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.engine import get_db
 from services.payment import PaymentService

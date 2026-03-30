@@ -1,20 +1,21 @@
 """Обработка Telegram Stars платежей."""
 
+import logging
 from aiogram import Router, F
 from aiogram.types import (
     Message, CallbackQuery, LabeledPrice,
     PreCheckoutQuery, ContentType
 )
-from sqlalchemy.ext.asyncio import AsyncSession
-import time
 
 from config import settings
 from database.engine import get_db
 from services.payment import PaymentService
 from keyboards.user_kb import get_main_menu_kb
-from utils.texts import PAYMENT_SUCCESS, UNKNOWN_PLAN
+from utils.helpers import format_datetime
+from utils.texts import PAYMENT_SUCCESS, RENEWAL_SUCCESS, UNKNOWN_PLAN
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 @router.callback_query(F.data.startswith("buy:"))
@@ -39,7 +40,7 @@ async def process_buy(callback: CallbackQuery):
     await callback.message.answer_invoice(
         title=title,
         description=description,
-        payload=f"sub_{plan_type}_{callback.from_user.id}",
+        payload=f"purchase:{plan_type}:{callback.from_user.id}",
         currency="XTR",  # Telegram Stars
         prices=prices,
         provider_token=""  # Для XTR токен пустой
@@ -58,18 +59,57 @@ async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery):
 async def process_successful_payment(message: Message):
     """Обработка успешного платежа."""
     payment = message.successful_payment
-    payload_parts = payment.invoice_payload.split("_")
-    plan_type = payload_parts[1]
-    user_tg_id = int(payload_parts[2])
+    payload_parts = payment.invoice_payload.split(":")
+    if len(payload_parts) != 3:
+        await message.answer("Не удалось обработать платёж: некорректный payload.")
+        return
+
+    action, target, user_tg_id_raw = payload_parts
+    user_tg_id = int(user_tg_id_raw)
+    if message.from_user.id != user_tg_id:
+        await message.answer("Не удалось подтвердить владельца платежа.")
+        return
 
     async for session in get_db():
         payment_service = PaymentService()
-        result = await payment_service.process_monthly_payment(
-            session, user_tg_id, payment.telegram_payment_charge_id, payment.total_amount
-        )
+        try:
+            if action == "purchase" and target == "monthly":
+                result = await payment_service.process_monthly_payment(
+                    session, user_tg_id, payment.telegram_payment_charge_id, payment.total_amount
+                )
 
-        sub_url = result["sub_url"]
-        text = PAYMENT_SUCCESS.format(plan=plan_type, url=sub_url)
+                sub_url = result["sub_url"]
+                text = PAYMENT_SUCCESS.format(plan="Месячная подписка", url=sub_url)
+            elif action == "renew":
+                result = await payment_service.process_renewal_payment(
+                    session,
+                    user_tg_id,
+                    int(target),
+                    payment.telegram_payment_charge_id,
+                    payment.total_amount,
+                    settings.monthly_duration_days,
+                )
+                if result is None:
+                    await message.answer("Не удалось продлить подписку. Попробуйте позже.")
+                    return
+
+                sub_url = result["sub_url"]
+                text = RENEWAL_SUCCESS.format(
+                    expires_at=format_datetime(result["subscription"].expires_at),
+                    url=sub_url,
+                )
+            else:
+                await message.answer(UNKNOWN_PLAN)
+                return
+        except Exception as exc:
+            logger.exception("Ошибка при обработке успешного платежа %s", payment.telegram_payment_charge_id)
+            await message.answer(
+                "Платеж получен, но выдача подписки завершилась ошибкой. "
+                "Пожалуйста, свяжитесь с администратором и передайте ID платежа: "
+                f"`{payment.telegram_payment_charge_id}`",
+                parse_mode="Markdown",
+            )
+            return
 
         kb = get_main_menu_kb()
         await message.answer(text, reply_markup=kb, parse_mode="Markdown")

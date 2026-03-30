@@ -2,13 +2,17 @@
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.engine import get_db
 from database.crud import get_user_subscriptions, get_user
-from keyboards.user_kb import get_main_menu_kb, get_subscription_actions_kb
-from utils.helpers import format_bytes, format_datetime
-from datetime import datetime
+from keyboards.user_kb import (
+    get_main_menu_kb,
+    get_subscription_actions_kb,
+    get_subscriptions_list_kb,
+)
+from services.subscription import SubscriptionService
+from utils.helpers import format_datetime
+from utils.texts import ACCESS_DENIED, SUBSCRIPTION_LINK_MESSAGE
 
 router = Router()
 
@@ -35,17 +39,21 @@ async def my_subscriptions(callback: CallbackQuery):
         for sub in subscriptions:
             status_emoji = "✅" if sub.status == "active" else "❌"
             expires_str = format_datetime(sub.expires_at) if sub.expires_at else "Бессрочно"
+            traffic_text = "Безлимит" if sub.traffic_limit_gb == 0 else f"{sub.traffic_limit_gb:g} ГБ"
 
             text += (
-                f"{status_emoji} {sub.plan_type.capitalize()}\n"
+                f"{status_emoji} #{sub.id} {sub.plan_type.capitalize()}\n"
                 f"📅 Истекает: {expires_str}\n"
-                f"📊 Лимит: {sub.traffic_limit_gb} ГБ\n"
+                f"📊 Лимит: {traffic_text}\n"
                 f"📱 Устройств: {sub.device_limit}\n\n"
             )
 
-            # Кнопки для каждой подписки
-            kb = get_subscription_actions_kb(sub.id)
-            await callback.message.edit_text(text, reply_markup=kb)
+        if len(subscriptions) == 1:
+            kb = get_subscription_actions_kb(subscriptions[0].id, include_back=True)
+        else:
+            kb = get_subscriptions_list_kb([sub.id for sub in subscriptions])
+
+        await callback.message.edit_text(text, reply_markup=kb)
 
         await callback.answer()
 
@@ -54,13 +62,19 @@ async def my_subscriptions(callback: CallbackQuery):
 async def get_subscription_link(callback: CallbackQuery):
     """Получить ссылку подписки."""
     sub_id = int(callback.data.split(":")[1])
-    # Получить sub_id из БД
     async for session in get_db():
-        from database.crud import get_subscription_by_id  # Нужно добавить эту функцию
-        # subscription = await get_subscription_by_id(session, sub_id)
-        # if subscription:
-        #     sub_url = f"{settings.subscription_base_url}{subscription.sub_id}"
-        #     await callback.answer(f"Ссылка: {sub_url}", show_alert=True)
-        # else:
-        #     await callback.answer("Подписка не найдена", show_alert=True)
-        await callback.answer("Ссылка: https://example.com/sub/12345678", show_alert=True)
+        subscription_service = SubscriptionService()
+        sub_url = await subscription_service.get_subscription_link(
+            session,
+            sub_id,
+            callback.from_user.id,
+        )
+        if not sub_url:
+            await callback.answer(ACCESS_DENIED, show_alert=True)
+            return
+
+        await callback.message.answer(
+            SUBSCRIPTION_LINK_MESSAGE.format(url=sub_url),
+            parse_mode="Markdown",
+        )
+        await callback.answer("Ссылка отправлена сообщением.", show_alert=True)

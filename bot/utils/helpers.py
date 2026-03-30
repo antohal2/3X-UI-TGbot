@@ -28,7 +28,7 @@ def format_bytes(bytes_value: int) -> str:
         value /= 1024
         unit_index += 1
 
-    return ".1f"
+    return f"{value:.1f} {units[unit_index]}"
 
 
 def format_datetime(dt: datetime) -> str:

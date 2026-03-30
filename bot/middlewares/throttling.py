@@ -24,7 +24,8 @@ class ThrottlingMiddleware(BaseMiddleware):
         now = time.time()
 
         if now - self.user_last_message[user_id] < self.rate_limit:
-            # Игнорировать слишком частые сообщения
+            if isinstance(event, CallbackQuery):
+                await event.answer("Слишком часто. Попробуйте через секунду.")
             return
 
         self.user_last_message[user_id] = now

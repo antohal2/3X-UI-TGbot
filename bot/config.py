@@ -1,6 +1,5 @@
 """Конфигурация приложения."""
 
-import os
 from typing import List
 from pydantic_settings import BaseSettings
 from pydantic import Field
@@ -18,6 +17,7 @@ class Settings(BaseSettings):
     xui_username: str = Field(..., env="XUI_USERNAME")
     xui_password: str = Field(..., env="XUI_PASSWORD")
     xui_inbound_id: int = Field(..., env="XUI_INBOUND_ID")
+    xui_tls_verify: bool = Field(True, env="XUI_TLS_VERIFY")
 
     # Подписки
     subscription_base_url: str = Field(..., env="SUBSCRIPTION_BASE_URL")
